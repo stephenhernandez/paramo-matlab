@@ -1,0 +1,37 @@
+function [multipletI,lPerMultiplet,T] = returnClusts(D,thresh,method)
+% D = distance vector
+% thresh = threshold
+% method = linkage method (complete, weighted, single, average, etc)
+
+if nargin < 2
+    thresh = 0.7;
+end
+cutoff = 1-thresh;
+
+%%
+if ~isvector(D)
+    fprintf(2,"Error: D is not a vector. Doing nothing.\n");
+    return
+end
+
+%% do work
+fprintf("getting linkages...\n");
+tree = linkage(D,method);
+
+
+fprintf("performing clustering...\n");
+T = cluster(tree,"cutoff",cutoff,...
+    "criterion","distance");
+uniqueT = unique(T);
+lPerMultiplet = groupcounts(T);
+nMultiplets = length(uniqueT);
+
+multipletI = cell(nMultiplets,1);
+for i = 1:nMultiplets
+    thisMultiplet = uniqueT(i);
+    uniq_tmps = find(T == thisMultiplet);
+    multipletI{i} = uniq_tmps;
+end
+
+[lPerMultiplet,sI] = sort(lPerMultiplet,"descend");
+multipletI = multipletI(sI);

@@ -1,0 +1,86 @@
+function S = rmsGather(varargin)
+% S = rmsGather(datetime(2015,08,01),datetime(2015,08,01),60,2,8,"BREF","BHZ",meanFlag,rmsFlag,"EC","",false,false,false,'~/rawdata/');
+
+nVarargin = length(varargin);
+functionDefaults = {...
+    datetime(2015,08,01),...    % tStart
+    datetime(2015,08,31),...    % tEnd
+    60,...                      % duration
+    2,...                       % lfc
+    8,...                       % hfc
+    "VCH1",...                  % stnm
+    "HHZ",...                   % chan
+    false,...                   % meanFlag      % sliding mean (true) or sliding median (false)?
+    false,...                   % methodFlag    % if true, RMS, else, absolute values
+    "EC",...                    % network
+    "",...                      % locID
+    false,...                   % diffFlag
+    false,...                   % prefilt with a medfilt? if yes, specify number of samples...
+    true,...                    % verboseFlag
+    ["~/rawdata/";"~/rawdata_cotopaxi/";"~/rawdata_old/"]};                      % verboseFlag
+
+optsToUse = functionDefaults;
+optsToUse(1:nVarargin) = varargin;
+[stnm,chan,net,locID,rawDataDirs] = deal(optsToUse{:});
+
+[tStart,tEnd,dur,lfc,hfc,stnm,chan,meanFlag,rmsFlag,net,locID,diffFlag,...
+    medPreFiltFlag,verboseFlag,rawDataDirs] = deal(optsToUse{:});
+
+%%
+if isfloat(tEnd)
+    days = tStart:tStart+tEnd-1;
+else
+    days = tStart:tEnd;
+end
+ldays = length(days);
+
+S = populateWaveforms(ldays);
+npoles = 4;
+zeroPhaseFlag = false;
+
+%%
+n=0;
+for i = 1:ldays
+    dayStart = days(i);
+
+    %%
+    S_ = loadWaveforms(dayStart,1,stnm,chan,net,locID,0,0,rawDataDirs);
+    if isnat(S_.ref)
+        fprintf("%s is empty, skipping.\n",dayStart);
+        continue;
+    end
+
+    %%
+    delta = S_.delta;
+    maxfilt = max([lfc hfc]);
+    if delta >= 0.025 && maxfilt >= 10 && isfinite(maxfilt)
+        fprintf("resampling for some reason, did you intend for this to happen?\n");
+        S_ = resampleWaveforms(S_,40);
+    end
+
+    %%
+    npts = S_.npts;
+    winlen = dur/S_.delta;
+    if npts < winlen
+        fprintf("%s is not long enough. skipping.\n",dayStart);
+        continue;
+    end
+
+    %%
+    n = n+1;
+    if verboseFlag
+        fprintf("processing: %s.%s.%s.%s: %s, %d\n",net,stnm,locID,chan,dayStart,n);
+    end
+    S(n) = rsamWaveforms(S_,dur,lfc,hfc,npoles,meanFlag,rmsFlag,diffFlag,...
+        zeroPhaseFlag,200,medPreFiltFlag); %added 2 second (200 sample assuming 100 sps) taper!
+end
+
+%%
+if ~n
+    S = S(1); %this should be empty
+    return;
+end
+
+%%
+S = S(1:n);
+S = mergeWaveforms(S);
