@@ -1,0 +1,20 @@
+%batchJob1
+job = batch('compareSangayCatalogs');
+updateRSAM("BBAC");
+updateRSAM("CUM");
+updateRSAM("FLO2");
+updateRSAM("HEL");
+updateRSAM("MAL",datetime(2015,01,232));
+updateRSAM("OCA",datetime(2016,01,229));
+updateRSAM("PAL");
+updateRSAM("PRV",datetime(2016,01,229));
+updateRSAM("POP2");
+updateRSAM("PTA");
+updateRSAM("PTLC");
+updateRSAM("PUAC",datetime(2015,01,13));
+updateRSAM("RUS");
+updateRSAM("SJC");
+updateRSAM("TUM");
+updateRSAM("URE");
+updateRSAM("URI");
+updateRSAM("VIL");

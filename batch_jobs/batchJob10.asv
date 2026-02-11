@@ -1,0 +1,184 @@
+% function batchJob10(dayStart,dayEnd,dayInc)
+% % clear; close all;
+% % dayStart = datetime(2016,11,12);
+% % dayEnd = datetime(2016,11,12);
+% % dayStart = datetime(2025,02,04);
+% % dayEnd = datetime(2025,02,04);
+% % dayInc = 1;
+% 
+% template_file_name = "ggp_no_pino";
+% template_function_directory = fullfile("~","masa","template_search","template_functions");
+% load(fullfile(template_function_directory,template_file_name),"T");
+% 
+% tf = canUseGPU();
+% if tf
+%     tic;
+%     gpuDevice(1); % Clobber memory in GPU? Do i want to do this?
+%     ge = gpuDevice();
+%     disp(ge);
+%     [r,c] = size(T);
+%     for i = 1:c
+%         for j = 1:r
+%             d = T(j,i).d;
+%             T(j,i).d = gpuArray(single(d));
+%         end
+%     end
+%     fprintf("done passing data to gpu device");
+%     ge = gpuDevice();
+%     disp(ge);
+%     toc;
+% end
+% 
+% %%
+% lfc = 2;
+% hfc = 8;
+% newFs = 64;
+% thresh = 7;
+% 
+% dayVec = (dayEnd:-dayInc:dayStart)';
+% lDays = length(dayVec);
+% 
+% writeFlag = true;
+% plotFlag = ~true;
+% verboseFlag = true;
+% minNpts = max(pull(T(:),'npts'));
+% 
+% %%
+% for i = 1:lDays
+%     day_ = dayVec(i);
+%     S = loadWaveforms(day_,dayInc,...
+%         ["BTER";"GGPC";"GGPT";"YANA"],...
+%         ["SHZ";"SHN";"SHE";"HHZ";"HHN";"HHE"],"EC","",false,false);
+% 
+%     badI = isnat(pull(S,'ref')) | max(pull(S,'npts')) < minNpts;
+%     S(badI) = [];
+%     lS = length(S);
+%     if ~lS %min number of traces is 1
+%         fprintf("not enough data for day: %s\n",string(day_));
+%         continue;
+%     end
+% 
+%     %%
+%     Sf = syncWaveforms(S,false,true,true);
+%     Sf = filterWaveforms(detrendWaveforms(Sf),lfc,hfc);
+%     Sf = resampleWaveforms(Sf,newFs);
+%     Sf = nanGapWaveforms(Sf,0);
+%     Sf = padWaveforms(Sf);
+% 
+%     custom_prefix = "ggp_no_pino";
+%     Tsncls = strcat(pull(T,'knetwk'),pull(T,'kstnm'),pull(T,'khole'),pull(T,'kcmpnm'));
+%     Ssncls = strcat(pull(Sf,'knetwk'),pull(Sf,'kstnm'),pull(Sf,'khole'),pull(Sf,'kcmpnm'));
+% 
+%     [lia,locb] = ismember(Ssncls,Tsncls);
+%     S_ = Sf(lia);
+%     if tf
+%         tic;
+%         ge = gpuDevice();
+%         disp(ge);
+%         r = size(S_,1);
+%         for j = 1:r
+%             d = S_(j).d;
+%             S_(j).d = gpuArray(single(d));
+%         end
+%         fprintf("done passing data to gpu device");
+%         ge = gpuDevice();
+%         disp(ge);
+%         toc;
+%     end
+% 
+%     if sum(lia)
+%         tic;
+%         [ccMain,tMain,ampMain,dMag,evidMain,magMain,templateNumber,madMain,nUsedMain,ccnorm,tLong] = ...
+%             templateSearch(S_,T(locb(lia),:),writeFlag,plotFlag,verboseFlag,thresh,custom_prefix);
+%         toc;
+%     end
+% end
+
+%%
+%function batchJob10(dayStart,dayEnd,dayInc)
+clear; close all;
+dayStart = datetime(2025,06,20);
+dayEnd = datetime(2025,07,01);
+dayInc = 1;
+
+template_function_directory = fullfile("~","masa","template_search","template_functions");
+load(fullfile(template_function_directory,"GGPTemplateStructStack_7.mat"),"T");
+
+%%
+lfc = 2;
+hfc = 16;
+newFs = 100;
+thresh = 7;
+
+dayVec = (dayEnd:-dayInc:dayStart)';
+lDays = length(dayVec);
+
+writeFlag = ~true;
+plotFlag = true;
+verboseFlag = true;
+minNpts = max(pull(T(:),'npts'));
+
+%%
+for i = 1:lDays
+    tic;
+    day_ = dayVec(i);
+    S = loadWaveforms(day_,dayInc,...
+        ["BTER";"PINO";"YANA";"JUA2";"GGPC";"GGPT"],...
+        ["HHZ";"HHN";"HHE";"SHZ";"SHN";"SHE"],"EC");
+
+    badI = isnat(pull(S,'ref')) | max(pull(S,'npts')) < minNpts;
+    S(badI) = [];
+    lS = length(S);
+    if ~lS %min number of traces is 1
+        fprintf("not enough data for day: %s\n",string(day_));
+        continue;
+    end
+    Sorig = S;
+
+    %%
+    kstnms = pull(S,'kstnm');
+    kcmpnms = pull(S,'kcmpnm');
+    kstnmI = strcmp(kstnms,"PINO");
+    sensorType = char(kcmpnms);
+    sensorType = string(sensorType(:,1:2));
+
+    %%
+    HHI = kstnmI & strcmp(sensorType,"HH");
+    lH = sum(HHI);
+    if day_ >= datetime(2024,01,229)
+        %delete PINO.SH? channels
+        badI = kstnmI & strcmp(sensorType,"SH");
+        if lH % flip polarity of PINO.HH? channels (if they exist)
+            S_ = S(HHI);
+            S_ = scaleWaveforms(S_,-1);
+            lS_ = length(S_);
+            for j = 1:lS_
+                kcmpnm_ = char(S_(j).kcmpnm);
+                S_(j).kcmpnm = string(['S',kcmpnm_(2:end)]);
+            end
+            S(HHI) = S_;
+        end
+    else
+        badI = HHI;
+    end
+    S(badI) = [];
+
+    %%
+    Sf = syncWaveforms(S);
+    Sf = differentiateWaveforms(Sf);
+    Sf = filterWaveforms(detrendWaveforms(Sf),lfc,hfc);
+    Sf = resampleWaveforms(Sf,newFs);
+    Sf = nanGapWaveforms(Sf,0);
+    Sf = padWaveforms(Sf);
+
+    customPrefix = "ggp";
+    Tsncls = strcat(pull(T,'knetwk'),pull(T,'kstnm'),pull(T,'khole'),pull(T,'kcmpnm'));
+    Ssncls = strcat(pull(Sf,'knetwk'),pull(Sf,'kstnm'),pull(Sf,'khole'),pull(Sf,'kcmpnm'));
+
+    [lia,locb] = ismember(Ssncls,Tsncls);
+    if sum(lia)
+        [ccMain,tMain,ampMain,dMag,evidMain,magMain,templateNumber,madMain,nUsedMain,ccnorm,tLong] = ...
+            templateSearch(Sf(lia),T(locb(lia),:),writeFlag,plotFlag,verboseFlag,thresh,customPrefix);
+    end
+    toc;
+end
