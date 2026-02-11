@@ -1,0 +1,141 @@
+function [h,aa,c2,pxx,tdumb,freqVec] = logSpectrogram(Scut,nfft,nMinutes,...
+    overlapFactor,lowestFreq,highestFreq,normFlag,plotFlag,nSubs)
+if nargin < 7
+    normFlag = false;
+end
+
+if nargin < 8
+    plotFlag = true;
+end
+
+if nargin < 9
+    nSubs = 10;
+end
+
+%%
+pxx = [];
+tdumb = [];
+freqVec = [];
+
+% custom script for MaFer
+if isnat(Scut.ref)
+    disp('no data');
+    h = [];
+    aa = [];
+    c2  =[];
+    return;
+end
+
+%%
+Scut = detrendWaveforms(Scut);
+Scut = interpolateWaveforms(Scut);
+delta = Scut.delta;
+
+Fs = 1/delta;
+if delta < 1
+    Fs = round(Fs);
+end
+
+Fny = Fs/2;
+if highestFreq < Fny
+    Fs = 2*highestFreq;
+    Scut = resampleWaveforms(Scut,Fs);
+    Scut = interpolateWaveforms(Scut);
+end
+
+%%
+winlen = nMinutes*60*Fs;
+noverlap = round(overlapFactor*winlen);
+
+%%
+d = Scut.d;
+t = getTimeVec(Scut);
+
+detrendFlag = true;
+[dcut,startIndex,endIndex] = cutWindows(d,winlen,noverlap,detrendFlag);
+middleIndex = round(mean([startIndex endIndex],2));
+dcut = detrend(demean(detrend(dcut)));
+
+disp(size(dcut));
+
+tStart = t(startIndex);
+tEnd = t(endIndex);
+tMiddle = t(middleIndex);
+goodI = sum(isfinite(dcut))' == winlen;
+
+if ~sum(goodI)
+    return;
+end
+
+dcut = dcut(:,goodI);
+tEnd = tEnd(goodI);
+tStart = tStart(goodI);
+%tMiddle = tMiddle(goodI);
+minT = min(tStart);
+maxT = max(tEnd);
+
+%%
+%w = kaiser(winlen,30);
+%w = rectwin(winlen);
+w = blackmanharris(winlen);
+%w = tukeywin(winlen,0.8);
+
+freqVec = logspace(log10(lowestFreq),log10(highestFreq),nfft);
+pxx = pwelch(dcut,w,0,freqVec,Fs);
+if normFlag
+    pxx = pxx./max(pxx);
+end
+pxx = 20*log10(abs(pxx));
+disp(size(pxx));
+
+%%
+if ~plotFlag
+    h = [];
+    aa = [];
+    c2 = [];
+    return;
+end
+
+figure('units','normalized','outerposition',[0.05 0.05 0.9 0.9]);
+%figure('units','normalized','outerposition',[0.1 0.1 0.85 0.85]);
+%figure('units','normalized','outerposition',[0 0 1 1]);
+tiledlayout(nSubs,1, 'Padding', 'compact', 'TileSpacing', 'none');
+aa(1) = nexttile;
+
+t = t(1:length(d));
+plot(t,d,'k-','linewidth',2); zoom on;
+c = colorbar;
+c.Visible = 'off';
+title(sprintf("%s.%s.%s.%s",Scut(1).knetwk,Scut(1).kstnm,Scut(1).khole,Scut(1).kcmpnm));
+set(aa(1),"YLimSpec","Tight");
+aa.LineWidth = 2;
+aa.Layer = "top";
+
+aa(2) = nexttile(2,[nSubs-1,1]);
+%h = pcolor(tMiddle,freqVec,pxx);
+h = pcolor(tStart,freqVec,pxx);
+axis xy;
+
+c2 = colorbar;
+maxmax = max(max(pxx));
+minmin = max([maxmax - 200, min(min(pxx))]);
+clim([minmin maxmax]);
+h.EdgeColor = "none";
+aa(2).YScale = "log";
+aa(2).LineWidth = 2;
+aa(2).Layer = "top";
+
+ylabel('frequency [hz.]');
+zoom on;
+alpha 0.8;
+colormap('parula');
+xlabel('UTC');
+
+%%
+linkaxes(aa,"x");
+aa(2).XTickLabelRotation = 16;
+disp([minT maxT])
+xlim([minT maxT]);
+ylim([lowestFreq highestFreq]);
+clim([0 160]);
+%grid on;
