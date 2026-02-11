@@ -1,0 +1,24 @@
+clear; close all; 
+[tsheet,type,Tsp,amp,magnitude,codaDuration,period,refStation] = loadVolcanicEvents("cotopaxi",7);
+clearvars -except tsheet amp type Tsp magnitude codaDuration period refStation
+[tsheetF,ampF,typeF,TspF,magnitudeF,codaDurationF,periodF,refStationF] = filterCatalog(tsheet,amp,10,type,Tsp,magnitude,codaDuration,period,refStation);
+goodI = tsheetF >= datetime(2017,01,01);
+axL1 = linkedPlot(tsheetF(goodI),ampF(goodI),t2r(tsheetF(goodI),days(1),[],false));
+axL1(1).YScale = 'log';
+axL1(1).YLabel.String = 'amplitude';
+axL1(2).YLabel.String = 'daily rate'; axis tight;
+goodI = tsheetF >= datetime(2017,01,01) & ampF >= 3e2;
+axL2 = linkedPlot(tsheetF(goodI),ampF(goodI),t2r(tsheetF(goodI),days(1),[],false));
+axL2(1).YScale = 'log';
+axL2(1).YLabel.String = 'amplitude';
+axL2(2).YLabel.String = 'daily rate'; axis tight;
+goodI = tsheetF >= datetime(2022,01,01);
+axL3 = linkedPlot(tsheetF(goodI),ampF(goodI),t2r(tsheetF(goodI),days(1),[],false));
+axL3(1).YScale = 'log';
+axL3(1).YLabel.String = 'amplitude';
+axL3(2).YLabel.String = 'daily rate'; axis tight;
+goodI = tsheetF >= datetime(2022,01,01) & ampF >= 3e2;
+axL4 = linkedPlot(tsheetF(goodI),ampF(goodI),t2r(tsheetF(goodI),days(1),[],false));
+axL4(1).YScale = 'log';
+axL4(1).YLabel.String = 'amplitude';
+axL4(2).YLabel.String = 'daily rate'; axis tight;
