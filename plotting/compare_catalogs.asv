@@ -1,0 +1,251 @@
+function ax = compare_catalogs(E1,E2,depthRange,refVMdepth)
+if nargin < 3
+    depthRange = [];
+end
+
+if nargin < 4
+    refVMdepth = 0;
+end
+
+%%
+Stations = readtable("station.sel","FileType","text");
+Stations.Var1 = string(Stations.Var1);
+kstnm = Stations
+t1 = pull(E1,"t");
+eqlat1 = pull(E1,"lat");
+eqlon1 = pull(E1,"lon");
+eqdepth1 = pull(E1,"depth"); eqdepth1 = refVMdepth - eqdepth1;
+eqmag1 = pull(E1,"mag");
+
+t2 = pull(E2,"t");
+eqlat2 = pull(E2,"lat");
+eqlon2 = pull(E2,"lon");
+eqdepth2 = pull(E2,"depth"); eqdepth2 = refVMdepth - eqdepth2;
+eqmag2 = pull(E2,"mag");
+
+minLon = floor(100*min([eqlon1; eqlon2]))/100;
+maxLon = ceil(100*max([eqlon1; eqlon2]))/100;
+minLat = floor(100*min([eqlat1; eqlat2]))/100;
+maxLat = ceil(100*max([eqlat1; eqlat2]))/100;
+tStart = dateshift(min([t1; t2]),"start","day");
+tEnd = dateshift(max([t1; t2]),"end","day");
+
+if isempty(depthRange)
+    depthRange = [min([floor(min([eqdepth1; eqdepth2])) 0]) ceil(max([eqdepth1; eqdepth2]))];
+end
+
+%% load important data
+load('~/igdata/soam_noec','lat_noec','lon_noec');
+load('~/igdata/ec_boundaries','latEC','lonEC');
+[lon,lat,demData] = cutDEM([minLon,maxLon,minLat,maxLat],true);
+
+% some parameteres for hillshade option
+demContrast = 3/4;
+ilumAz = -45;
+wMark = 1.75;
+elevAngle = 40;
+geoshowFlag = true;
+timeColorCode = true;
+hillShadeFlag = true;
+fontSize = 24;
+magFact = 10;
+minLevInc = [];
+
+%%
+figure('units','normalized','outerposition',[0.05 0.05 0.9 0.9]);
+TL = tiledlayout(1,2,"Padding","compact","TileSpacing","none");
+laxes = 1;
+ax(laxes) = nexttile();
+
+if hillShadeFlag
+    disp('applying hillshading')
+    I = dem(lon,lat,demData','Contrast',demContrast,'Azimuth',ilumAz,'noplot','Watermark',wMark,'Elevation',elevAngle,'NaNColor',[1 1 1]);
+    imagesc(ax(laxes),I.x,I.y,I.rgb);
+    hold(ax(laxes),'on');
+    axis(ax(laxes),'xy');
+else
+    minElev = min(min(demData));
+    maxElev = max(max(demData));
+
+    if isempty(minLevInc)
+        elevRange = maxElev - minElev;
+        fprintf("Elevation Range in DEM: %d\n",elevRange);
+        if elevRange > 1000
+            [~,cc] = contour(ax(laxes),lon,lat,demData',(minElev:80:maxElev)');
+            cc.LineWidth = 0.03;
+            %cc.Color = [0.5 0.5 0.5];
+        else
+            [~,cc] = contour(ax(laxes),lon,lat,demData',(minElev:30:maxElev)');
+            cc.LineWidth = 0.03;
+            %cc.Color = [0.5 0.5 0.5];
+        end
+    else
+        if geoshowFlag
+            elevRange = maxElev - minElev;
+            fprintf("Elevation Range in DEM: %d\n",elevRange);
+            [~,cc] = contour(ax(laxes),lon,lat,demData',(minElev:minLevInc:maxElev)');
+            cc.LineWidth = 0.01;
+            %cc.Color = [0.5 0.5 0.5];
+        end
+    end
+    hold(ax(laxes),'on');
+    axis(ax(laxes),'xy');
+end
+zoom(ax(laxes),'on');
+grid(ax(laxes),'on');
+ax(laxes).Box = 'on';
+
+%%
+plot(ax(laxes),lonEC,latEC,'k','linewidth',2);
+ylabel(ax(laxes),'Latitud','FontSize',fontSize);
+xlabel(ax(laxes),'Longitud','FontSize',fontSize);
+axis(ax(laxes),'equal');
+
+if geoshowFlag
+    geoshow('~/igdata/fallasactualizado/fallas2008completas.shp','Color','r','linewidth',0.5);
+    geoshow('~/igdata/ZonaUrbana/ZonaUrbana.shp');
+end
+
+cb1 = colorbar(ax(laxes));
+cb1.Visible = 'off';
+axis(ax(laxes),[minLon maxLon minLat maxLat]);
+
+pointColormap = 'parula';
+if strcmp(pointColormap,'turbo')
+    if dn2dt(datenum(version('-date'))) < datetime(2018,01,01)
+        pointColormap = 'parula';
+    end
+end
+
+cmap = 'copper';
+if ~hillShadeFlag
+    colormap(ax(laxes),cmap);
+end
+markerFaceAlpha = 0.8;
+
+%% first dataset
+ax(laxes+1) = axes(TL);
+ax(laxes+1).Layout.Tile = 1;
+hold(ax(laxes+1),'on');
+color_variable = datenum(t1);
+climits = datenum([tStart tEnd]);
+if ~timeColorCode
+    color_variable = eqdepth1;
+    depthRange
+    climits = depthRange;
+end
+
+S = scatter(ax(laxes+1),eqlon1,eqlat1,magFact*exp(eqmag1),color_variable,'filled');
+c1 = colorbar;
+S.MarkerFaceAlpha = markerFaceAlpha;
+S.MarkerEdgeColor = 'k';
+S.MarkerEdgeAlpha = markerFaceAlpha;
+clim(ax(laxes+1),climits);
+if timeColorCode
+    c1.TickLabels = datestr(c1.Ticks);
+end
+c1.Label.Interpreter = 'latex';
+colormap(ax(laxes+1),pointColormap);
+linkaxes(ax(laxes:laxes+1));
+axis(ax(laxes+1),'equal');
+axis(ax(laxes+1),[minLon maxLon minLat maxLat]);
+ax(laxes+1).Visible = 'off';
+c1.Visible = "off";
+
+%% second dataset...
+laxes = laxes+2;
+ax(laxes) = nexttile();
+if hillShadeFlag
+    disp('applying hillshading')
+    I = dem(lon,lat,demData','Contrast',demContrast,'Azimuth',ilumAz,'noplot','Watermark',wMark,'Elevation',elevAngle,'NaNColor',[1 1 1]);
+    imagesc(ax(laxes),I.x,I.y,I.rgb);
+    hold(ax(laxes),'on');
+    axis(ax(laxes),'xy');
+else
+    minElev = min(min(demData));
+    maxElev = max(max(demData));
+
+    if isempty(minLevInc)
+        elevRange = maxElev - minElev;
+        fprintf("Elevation Range in DEM: %d\n",elevRange);
+        if elevRange > 1000
+            [~,cc] = contour(ax(laxes),lon,lat,demData',(minElev:80:maxElev)');
+            cc.LineWidth = 0.03;
+            %cc.Color = [0.5 0.5 0.5];
+        else
+            [~,cc] = contour(ax(laxes),lon,lat,demData',(minElev:30:maxElev)');
+            cc.LineWidth = 0.03;
+            %cc.Color = [0.5 0.5 0.5];
+        end
+    else
+        if geoshowFlag
+            elevRange = maxElev - minElev;
+            fprintf("Elevation Range in DEM: %d\n",elevRange);
+            [~,cc] = contour(ax(laxes),lon,lat,demData',(minElev:minLevInc:maxElev)');
+            cc.LineWidth = 0.01;
+            %cc.Color = [0.5 0.5 0.5];
+        end
+    end
+    hold(ax(laxes),'on');
+    axis(ax(laxes),'xy');
+end
+zoom(ax(laxes),'on');
+grid(ax(laxes),'on');
+ax(laxes).Box = 'on';
+plot(ax(laxes),lonEC,latEC,'k','linewidth',2);
+xlabel(ax(laxes),'Longitud','FontSize',fontSize);
+axis(ax(laxes),'equal');
+
+if geoshowFlag
+    geoshow('~/igdata/fallasactualizado/fallas2008completas.shp','Color','r','linewidth',0.5);
+    geoshow('~/igdata/ZonaUrbana/ZonaUrbana.shp');
+end
+
+cb1 = colorbar(ax(laxes));
+cb1.Visible = 'off';
+axis(ax(laxes),[minLon maxLon minLat maxLat]);
+
+%%
+ax(laxes+1) = axes(TL);
+ax(laxes+1).Layout.Tile = 2;
+hold(ax(laxes+1),'on');
+color_variable = datenum(t2);
+climits = datenum([tStart tEnd]);
+if ~timeColorCode
+    color_variable = eqdepth2;
+    climits = depthRange;
+end
+
+%plot(ax(laxes+1),[eqlon1';eqlon2'],[eqlat1';eqlat2'],'-',"linewidth",0.02,"Color",[0.5 0.5 0.5]); zoom on;
+S = scatter(ax(laxes+1),eqlon2,eqlat2,magFact*exp(eqmag2),color_variable,'filled');
+c = colorbar;
+S.MarkerFaceAlpha = markerFaceAlpha;
+S.MarkerEdgeColor = 'k';
+S.MarkerEdgeAlpha = markerFaceAlpha;
+clim(ax(laxes+1),climits);
+if timeColorCode
+    c.TickLabels = datestr(c.Ticks);
+end
+c.Label.Interpreter = 'latex';
+colormap(ax(laxes+1),pointColormap);
+%plot(ax(laxes+1),eqlon1,eqlat1,"k."); zoom on;
+
+linkaxes(ax(1:laxes+1));
+axis(ax(laxes+1),'equal');
+axis(ax(laxes+1),[minLon maxLon minLat maxLat]);
+ax(laxes+1).Visible = 'off';
+ax(3).YTick = [];
+ax(4).YTick = [];
+
+%%
+% figure(); 
+% %plot([datenum(t1');eqdepth1'],[datenum(t1');eqdepth2'],'-',"linewidth",0.02,"Color",[0.5 0.5 0.5]); zoom on;
+% %hold on;
+% S2 = scatter(t1,eqdepth1,magFact*exp(eqmag1),eqdepth1,'filled'); 
+% c = colorbar;
+% S2.MarkerFaceAlpha = markerFaceAlpha;
+% S2.MarkerEdgeColor = 'k';
+% S2.MarkerEdgeAlpha = markerFaceAlpha;
+% zoom on; grid on;
+% hold on; 
+% plot(t2,eqdepth2,'k.');

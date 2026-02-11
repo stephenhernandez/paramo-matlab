@@ -1,0 +1,11 @@
+function S = populateSphaseStruct()
+S.stnm = NaN;
+S.ntwk = NaN;
+S.dist = NaN;
+S.azimuth = NaN;
+S.hh = NaN;
+S.mmm = NaN;
+S.sec = NaN;
+S.res = NaN;
+S.wt = NaN;
+S.t = NaN;

@@ -1,0 +1,9 @@
+function T = populateTemplateStructure
+T.d = NaN;
+T.shift = NaN;
+T.chan = NaN;
+T.stnm = NaN;
+T.id = NaN;
+T.origin = NaN;
+T.mintt = NaN;
+T.mag = NaN;
