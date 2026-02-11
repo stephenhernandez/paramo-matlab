@@ -1,0 +1,45 @@
+function [weights,Sxx] = get_weights(Sxx,nIter,lambda,sigma)
+if nargin < 2
+    nIter = 4;
+end
+
+%%
+nDims = ndims(Sxx);
+sizeSxx = size(Sxx);
+nTapers = sizeSxx(end);
+if nTapers < 2
+    fprintf("only 1 taper, doing nothing\n");
+    return;
+end
+defaultW = 1/nTapers;
+weights = defaultW*ones(sizeSxx);
+
+%%
+if nargin < 4
+    sigma = 4;
+end
+
+%%
+indices = repmat({':'},1,nDims-1);
+Sest_xx = mean(Sxx(indices{:},1:2),nDims);
+
+iter = 0;
+lambda = var1_timedomain/max(var1_timedomain);
+defaultW = 1/nTapers;
+while iter < nIter
+    % since i dont know how to stop the iterative process, i will just choose 4...
+    for k = 1:c
+        %var1 = var1_timedomain(k);
+        lambda_k = lambda(k);
+        sqrt_lambda = sqrt(lambda_k);
+        lambda_k_S = sqrt_lambda.*Sest_xx;
+        weights_ = lambda_k_S./(sqrt_lambda*lambda_k_S + (1-lambda_k)*sigma);
+        weights_(~isfinite(weights_) | weights_ <= 0) = defaultW;
+        weights(:,k) = weights_;
+    end
+    normWeights = 1./sum(weights,nDims);
+    weights = weights.*normWeights;
+    Sest_xx = sum(weights.*Sxx,nDims);
+    iter = iter + 1;
+end
+Sxx = Sest_xx;

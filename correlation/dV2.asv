@@ -1,0 +1,543 @@
+function [dVOrig,CCOrig,rmsOrig,refTrace,dayData,tOrig,nIndependentChannels,...
+    maxWindows,lDays,causalLength,lags,ax,stackMethod,referenceStartTime,...
+    cwiStart,cwiEnd,newFs,maxPrcnt,lfc,hfc,titles,Nsmooth,maxLag,t2,...
+    dPrcntFlag,cumFlag,secDur] = dV2(varargin)
+
+%
+% Written by Stephen Hernandez
+% Instituto Geofisico, Quito, Ecuador
+% Wednesday, Jul 24, 2019
+%
+
+%%
+nVarargin = length(varargin);
+functionDefaults = {...
+    datetime(2017,01,01),...        % tStart
+    datetime(2025,07,04),...        % tEnd
+    datetime(2016,04,01),...        % referenceTime
+    ["FER1","BHZ","EC",""],...      % SNCL1
+    ["FER1","BHZ","EC",""],...      % SNCL2
+    0,...                           % dW
+    2,...                           % lfc
+    4,...                           % hfc
+    2,...                           % cwiStart
+    10,...                          % cwiDur
+    1,...                           % allFlag
+    40,...                          % newFs
+    3600,...                        % secDur %2^10
+    15,...                          % maxLag
+    120,...                         % Nsmooth
+    false,...                       % transferFlag
+    "~/masa/backups/"};             % pathToWaveformServerOrDirectory
+
+% functionDefaults = {...
+%     datetime(2013,01,01),...        % tStart
+%     datetime(2025,02,28),...        % tEnd
+%     datetime(2016,04,01),...        % referenceTime
+%     ["BREF","BHZ","EC",""],...      % SNCL1
+%     ["BREF","BHZ","EC",""],...      % SNCL2
+%     0,...                           % dW
+%     2,...                           % lfc
+%     4,...                           % hfc
+%     2,...                           % cwiStart
+%     10,...                          % cwiDur
+%     1,...                           % allFlag
+%     2^06,...                        % newFs
+%     2^12,...                        % secDur %2^10
+%     2^04,...                        % maxLag
+%     105,...                         % Nsmooth
+%     false,...                       % transferFlag
+%     "~/rawdata_cotopaxi/"};         % pathToWaveformServerOrDirectory
+
+% functionDefaults = {...
+%     datetime(2015,01,01),...        % tStart
+%     datetime(2018,12,31),...        % tEnd
+%     datetime(2016,04,01),...        % referenceTime
+%     ["VCH1","HHZ","EC",""],...      % SNCL1
+%     ["VCH1","HHZ","EC",""],...      % SNCL2
+%     0,...                           % dW
+%     2,...                           % lfc
+%     4,...                           % hfc
+%     2,...                           % cwiStart
+%     10,...                          % cwiDur
+%     1,...                           % allFlag
+%     2^06,...                        % newFs
+%     2^12,...                        % secDur %2^10
+%     2^04,...                        % maxLag
+%     105,...                         % Nsmooth
+%     false,...                       % transferFlag
+%     "~/masa/backups/"};             % pathToWaveformServerOrDirectory
+
+% functionDefaults = {...
+%     datetime(2013,09,01),...        % tStart
+%     datetime(2015,12,31),...        % tEnd
+%     datetime(2030,01,01),...        % referenceTime
+%     ["SAGA","HHZ","EC",""],...      % SNCL1
+%     ["SAGA","HHZ","EC",""],...      % SNCL2
+%     0,...                           % dW
+%     1,...                           % lfc
+%     2,...                           % hfc
+%     4,...                           % cwiStart
+%     10,...                          % cwiDur
+%     1,...                           % allFlag
+%     2^05,...                        % newFs
+%     2^12,...                        % secDur %2^10
+%     2^05,...                        % maxLag
+%     105,...                         % Nsmooth
+%     false,...                       % transferFlag
+%     "~/rawdata_cotopaxi/"};         % pathToWaveformServerOrDirectory
+
+% beautiful results 1 (3min58sec on parpool)
+% functionDefaults = {...
+%     datetime(2018,03,01),...        % tStart
+%     datetime(2018,05,01),...        % tEnd
+%     datetime(2030,01,01),...        % referenceTime
+%     ["BTER","HHZ","EC",""],...      % SNCL1
+%     ["BTER","HHZ","EC",""],...      % SNCL2
+%     0,...                           % dW
+%     2.0,...                         % lfc
+%     4.0,...                         % hfc
+%     4,...                           % cwiStart
+%     10,...                          % cwiDur
+%     true,...                        % allFlag
+%     2^06,...                        % newFs
+%     2^12,...                        % secDur %2^10
+%     2^04,...                        % maxLag
+%     105,...                         % Nsmooth
+%     false,...                       % transferFlag
+%     "~/rawdata_cotopaxi/"};         % pathToWaveformServerOrDirectory
+
+% functionDefaults = {...
+%     datetime(2023,11,15),...        % tStart
+%     datetime(2023,12,15),...        % tEnd
+%     datetime(2030,01,01),...        % referenceTime
+%     ["CBDG","HHZ","EC",""],...      % SNCL1
+%     ["FER3","HHZ","EC",""],...      % SNCL2
+%     0,...                           % dW
+%     0.2,...                         % lfc
+%     0.8,...                         % hfc
+
+% decent parms here, only change the station, keep HHN-HHE (for instance, at SN12)
+% functionDefaults = {...
+%     datetime(2023,01,01),...        % tStart
+%     datetime(2023,01,318),...       % tEnd
+%     datetime(2030,01,01),...        % referenceTime
+%     ["CBHM","HHN","EC",""],...      % SNCL1
+%     ["CBHM","HHE","EC",""],...      % SNCL2
+%     0,...                           % dW
+%     1,...                           % lfc
+%     2,...                           % hfc
+
+% functionDefaults = {...
+%     datetime(2023,01,129),...           % tStart
+%     datetime(2023,01,135),...           % tEnd
+%     datetime(2030,01,01),...            % referenceTime
+%     ["CTX1","DPZ","EC",""],...          % SNCL1
+%     ["CTX4","DPZ","EC",""],...          % SNCL2
+%     0,...                               % dW
+%     4.0,...                             % lfc
+%     8.0,...                             % hfc
+
+% % Beautiful Results 2 (takes 1 hour on little resources)
+% functionDefaults = {...
+%     datetime(2016,07,01),...        % tStart
+%     datetime(2021,04,01),...        % tEnd
+%     datetime(2030,01,01),...        % referenceTime
+%     ["BTER","HHZ","EC",""],...      % SNCL1
+%     ["BTER","HHZ","EC",""],...      % SNCL2
+%     0,...                           % dW
+%     2.0,...                         % lfc
+%     4.0,...                         % hfc
+
+% 2009 doesnt work for some reason
+% functionDefaults = {...
+%     datetime(2009,01,205),...       % tStart
+%     datetime(2011,01,162),...       % tEnd
+%     datetime(2030,01,01),...        % referenceTime
+%     ["GS09","BHZ","XE",""],...      % SNCL1
+%     ["GS09","BHZ","XE",""],...      % SNCL2
+%     0,...                           % dW
+%     2.0,...                         % lfc
+%     4.0,...                         % hfc
+
+% functionDefaults = {...
+%     datetime(2016,05,01),...        % tStart
+%     datetime(2016,08,01),...        % tEnd
+%     datetime(2030,01,01),...        % referenceTime
+%     ["BRTU","HHZ","EC",""],...      % SNCL1
+%     ["BRTU","HHZ","EC",""],...      % SNCL2
+%     0,...                           % dW
+%     2.0,...                         % lfc
+%     4.0,...                         % hfc
+
+% functionDefaults = {...
+%     datetime(2025,01,20),...        % tStart
+%     datetime(2025,01,23),...        % tEnd
+%     datetime(2030,01,01),...        % referenceTime
+%     ["CO1V","HHZ","EC",""],...      % SNCL1
+%     ["CO1V","HHZ","EC",""],...      % SNCL2
+%     0,...                           % dW
+%     2.0,...                         % lfc
+%     4.0,...                         % hfc
+
+% functionDefaults = {...
+%     datetime(2018,01,117),...        % tStart
+%     datetime(2019,01,84),...        % tEnd
+%     datetime(2018,09,01),...        % referenceTime
+%     ["SN12","HHZ","9D",""],...      % SNCL1
+%     ["SN03","HHZ","9D",""],...      % SNCL2
+%     0,...                           % dW
+%     0.5,...                         % lfc
+%     1.5,...                         % hfc
+
+optsToUse = functionDefaults;
+if nVarargin
+    optsToUse(1:nVarargin) = varargin;
+end
+[tStart,tEnd,referenceStartTime,SNCL1,SNCL2,dW,lfc,hfc,cwiStart,cwiDur,...
+    allFlag,newFs,secDur,maxLag,Nsmooth,transferFlag,pathToWaveformServerOrDirectory] = deal(optsToUse{:});
+titles = [];
+
+%%
+stackMethod = 'pws';
+cwiEnd = cwiStart + cwiDur;
+maxPrcnt = 20;
+
+%%
+fprintf('The following SNCL(s) will be processed:\n');
+fprintf('<strong>%s</strong>\n',...
+    strcat(char(SNCL1(3)),'.',char(SNCL1(1)),'.',char(SNCL1(4)),'.',char(SNCL1(2))));
+fprintf('<strong>%s</strong>\n',...
+    strcat(char(SNCL2(3)),'.',char(SNCL2(1)),'.',char(SNCL2(4)),'.',char(SNCL2(2))));
+
+verboseFlag = false;
+tic;
+[dayData,nIndependentChannels,tOrig,lags,maxWindows,lDays,causalLength] = ...
+    getCorrelationFunctions(tStart,tEnd,SNCL1,SNCL2,allFlag,dW,lfc,hfc,...
+    newFs,secDur,maxLag,1,transferFlag,verboseFlag,pathToWaveformServerOrDirectory);
+refTrace = NaN(causalLength,nIndependentChannels);
+toc;
+
+%%
+if nIndependentChannels == 12
+    titles = ["zz";"nn";"ee";...
+        "zn caus";"zn acaus";"zn sym";...
+        "ne caus";"ne acaus";"ne sym";...
+        "ez caus";"ez acaus";"ez sym"];
+elseif nIndependentChannels == 27
+    titles = ["z1z2 caus";"z1z2 acaus";"z1z2 sym";...
+        "r1r2 caus";"r1r2 acaus";"r1r2 sym";...
+        "t1t2 caus";"t1t2 acaus";"t1t2 sym";...
+        "z1r2 caus";"z1r2 acaus";"z1r2 sym";...
+        "r1t2 caus";"r1t2 acaus";"r1t2 sym";...
+        "t1z2 caus";"t1z2 acaus";"t1z2 sym";...
+        "z1t2 caus";"z1t2 acaus";"z1t2 sym";...
+        "r1z2 caus";"r1z2 acaus";"r1z2 sym";...
+        "t1r2 caus";"t1r2 acaus";"t1r2 sym"];
+end
+
+%%
+fName = fullfile("~","masa","dV","tmp",sprintf("tmp_%s",datestr(datetime("now"),30)));
+save(fName,"-v7.3");
+
+%%
+close all;
+tic;
+t = tOrig;
+cwiStart = 6/sqrt(lfc*hfc);
+cwiEnd = 34/sqrt(lfc*hfc);
+cwiDur = cwiEnd - cwiStart;
+fprintf('CWI Start: <strong>%f</strong>\n',cwiStart);
+fprintf('CWI End: <strong>%f</strong>\n',cwiEnd);
+fprintf('CWI Duration: <strong>%f</strong>\n',cwiDur);
+fprintf('\n');
+
+stackMethod = 'pws';
+dPrcntFlag = true;
+wienerFilter = ~true;
+ax = gobjects(nIndependentChannels,1);
+
+lt = maxWindows*lDays;
+indiv_ccfs_this_combo = NaN(causalLength,lt);
+t2 = t;
+dV = NaN(lt,nIndependentChannels);
+CC = dV;
+rmsPrcnt = dV;
+
+tic;
+for i = 1:nIndependentChannels
+    fprintf('processing channel %d\n',i);
+    startBlockI = maxWindows*(i-1)+1;
+    endBlockI = maxWindows*i;
+    for j = 1:lDays
+        si = startBlockI + (j-1)*maxWindows*nIndependentChannels;
+        ei = endBlockI + (j-1)*maxWindows*nIndependentChannels;
+
+        si2 = maxWindows*(j-1)+1;
+        ei2 = maxWindows*j;
+
+        %fprintf('%d %d %d %d\n',si,ei,si2,ei2);
+        indiv_ccfs_this_combo(:,si2:ei2) = dayData(:,si:ei);
+    end
+
+    nanI = ~isfinite(indiv_ccfs_this_combo);
+    indiv_ccfs_this_combo(nanI) = 0;
+    %indiv_ccfs_this_combo = freqDiff(indiv_ccfs_this_combo,newFs); %<-- remove diff command!!!
+    indiv_ccfs_this_combo = detrend(indiv_ccfs_this_combo);
+    indiv_ccfs_this_combo = indiv_ccfs_this_combo./rssq(indiv_ccfs_this_combo);
+    indiv_ccfs_this_combo(nanI) = NaN;
+
+    % filter bank....
+    nu = 4;
+    if Nsmooth > 1
+        fprintf('doing smoothing\n');
+        goodI = ~any(~isfinite(indiv_ccfs_this_combo))';
+        dayData3 = detrend(indiv_ccfs_this_combo(:,goodI));
+
+        %
+        if wienerFilter
+            %n_seconds,n_records
+            wienerSmoother = [ceil(newFs/hfc),ceil(0.25*Nsmooth)];
+            dayData3 = wiener2(dayData3,wienerSmoother);
+            dayData3 = pws(dayData3,true,true,nu,Nsmooth); %<-- moving phase weighted stack...
+            disp(wienerSmoother);
+        else
+            fprintf("not applying wiener filter\n");
+            dayData3 = pws(dayData3,true,true,nu,Nsmooth);
+            fprintf("done with non-wiener filter... (likely phase weighted stack...)\n");
+        end
+        indiv_ccfs_this_combo(:,goodI) = dayData3;
+    end
+
+    if strcmp(stackMethod,'pws')
+        refTrace_ = pws(indiv_ccfs_this_combo(:,t2 <= referenceStartTime),true,true,nu);
+    elseif strcmp(stackMethod,'med')
+        refTrace_ = median(indiv_ccfs_this_combo(:,t2 <= referenceStartTime),2,"omitnan");
+    elseif strcmp(stackMethod,'mean')
+        refTrace_ = mean(indiv_ccfs_this_combo(:,t2 <= referenceStartTime),2,"omitnan");
+    end
+
+    %
+    cumFlag = false;
+    if dPrcntFlag
+        goodI = find(~any(~isfinite(indiv_ccfs_this_combo))' & t2 <= datetime(2037,01,01));
+        dayData3 = indiv_ccfs_this_combo(:,goodI);
+
+        maxPrcnt = 10;
+        fprintf("option: delta_percent from one time to another, then take cumulative change...\n");
+        [dV_,cc_,~,rms_] = cwiShifts(dayData3(:,Nsmooth:end-Nsmooth),dayData3(:,2*Nsmooth:end),cwiStart,cwiEnd,...
+            newFs,false,maxPrcnt,lfc,hfc);
+        goodI = goodI(Nsmooth:end-Nsmooth);
+        cumFlag = true;
+
+        % maxPrcnt = 10;
+        % fprintf("option: delta_percent from one time to another, then take cumulative change...\n");
+        % [dV_,cc_,~,rms_] = cwiShifts(dayData3(:,1:end-1),dayData3(:,2:end),cwiStart,cwiEnd,...
+        %     newFs,false,maxPrcnt,lfc,hfc);
+        % dV_ = [0; dV_];
+        % cc_ = [1; cc_];
+        % rms_ = [0; rms_];
+
+        dV(goodI,i) = dV_;
+        dV_ = dV(:,i);
+        CC(goodI,i) = cc_;
+        cc_ = CC(:,i);
+        rmsPrcnt(goodI,i) = rms_;
+        rms_ = rmsPrcnt(:,i);
+    else
+        maxPrcnt = 30;
+        fprintf('Max Shift [%%]: <strong>%f</strong>\n',maxPrcnt);
+        [dV_,cc_,~,rms_] = cwiShifts(refTrace_,indiv_ccfs_this_combo,cwiStart,cwiEnd,...
+            newFs,false,maxPrcnt,lfc,hfc);
+        dV(:,i) = dV_;
+        CC(:,i) = cc_;
+        rmsPrcnt(:,i) = rms_;
+    end
+    refTrace(:,i) = refTrace_;
+    toc;
+
+    figure('units','normalized','outerposition',[0.1 0.1 0.8 0.8]);
+    subplot(5,6,[1 2 3 4 5 6]);
+    mp = find(lags >= 0,1);
+    plot(lags(mp:mp+causalLength-1),refTrace_,'linewidth',2);
+    cc = colorbar; cc.Visible = 'off';
+    zoom on; axis tight;
+
+    ax(i) = subplot(5,6,[9 10 11 12 15 16 17 18 21 22 23 24 27 28 29 30]);
+    ss = scatter(t2,dV(:,i),60,cc_,'filled');
+    colorbar;
+    grid on;
+    zoom on;
+    ss.MarkerEdgeColor = 'w';
+    ss.MarkerEdgeAlpha = 0.1;
+    ss.MarkerFaceAlpha = 0.5;
+
+    subplot(5,6,[7 8 13 14 19 20 25 26]);
+    imagesc((1:length(t2))',lags(lags >= 0),sign(indiv_ccfs_this_combo));
+    zoom on;
+    if nIndependentChannels == 12 || nIndependentChannels == 27
+        sgtitle(titles(i));
+    end
+end
+linkaxes(ax,'xy');
+toc;
+
+CCOrig = CC;
+dVOrig = dV;
+tOrig = t;
+rmsOrig = rmsPrcnt;
+
+%%
+CC = CCOrig;
+dV = dVOrig;
+rmsPrcnt = rmsOrig;
+t = tOrig;
+t3 = dateshift(tOrig,"start","hour","nearest"); %t3 = (dateshift(min(tOrig),"start","day"):seconds(3600):dateshift(max(tOrig),"end","day"))';
+
+dVInterp = NaN(length(t3),size(dVOrig,2));
+CCInterp = dVInterp;
+rmsInterp = dVInterp;
+
+for i = 1:size(dV,2)
+    dV_ = dV(:,i);
+    goodI_ = ~isnat(t) & isfinite(dV_);
+    dV_ = dV_(goodI_);
+    t_ = t(goodI_);
+    dV__ = interp1(datenum(t_),dV_,datenum(t3));
+    dVInterp(:,i) = dV__;
+
+    CC_ = CC(:,i);
+    goodI_ = ~isnat(t) & isfinite(CC_);
+    CC_ = CC_(goodI_);
+    t_ = t(goodI_);
+    CC__ = interp1(datenum(t_),CC_,datenum(t3));
+    CCInterp(:,i) = CC__;
+
+    rms_ = rmsPrcnt(:,i);
+    goodI_ = ~isnat(t) & isfinite(rms_);
+    rms_ = rms_(goodI_);
+    t_ = t(goodI_);
+    rms__ = interp1(datenum(t_),rms_,datenum(t3));
+    rmsInterp(:,i) = rms__;
+end
+
+t2 = t3;
+t2(~goodI_) = NaT;
+CC = CCInterp;
+dV = dVInterp;
+rmsPrcnt = rmsInterp;
+
+minCCThresh = 0.3;
+CCI = CC >= minCCThresh;
+CC(~CCI) = NaN;
+dV(~CCI) = NaN;
+
+mu = 3; %<-- play around with this parameter...
+ccweights = ((CC.^mu)./sum((CC.^mu),2,"omitnan"));
+goodI = ~any(~isfinite(CC) | ~isfinite(dV),2); % == 0;
+
+dV(~goodI) = NaN; %cumsum(dV,"omitnan");
+if dPrcntFlag
+    %dV = cumsum(detrend(dV,"omitnan"),"omitnan");
+    dV = cumsum(dV,"omitnan");
+    if cumFlag
+        dV = dV/(Nsmooth*2);
+    else
+        rmsPrcnt = rmsPrcnt*sqrt(Nsmooth+1);
+    end
+else
+    rmsPrcnt = rmsPrcnt*sqrt(Nsmooth+1);
+end
+dVstack = sum(dV.*ccweights,2,"omitnan");
+
+figure('units','normalized','outerposition',[0 0.5 1 1]);
+ax_ = gca; laxes = 1;
+plot(ax_,t2,dVstack,'linewidth',3); zoom on; grid on;
+hold on;
+
+h1 = plot(t2,dVstack+1.96*(sum(ccweights.*(rmsPrcnt.^mu),2,"omitnan").^(1/mu)),'k--','linewidth',2);
+h2 = plot(t2,dVstack-1.96*(sum(ccweights.*(rmsPrcnt.^mu),2,"omitnan").^(1/mu)),'k--','linewidth',2);
+h1.Color(4) = 0.5;
+h2.Color(4) = 0.5;
+
+%%
+figure();
+plot(t2,1.96*sqrt(sum(ccweights.*(rmsPrcnt.^2),2,"omitnan")),'.'); zoom on; grid on;
+
+dV3 = dVInterp; %dVOrig;
+goodI = sum(~isfinite(CC),2) == 0;
+dV3(~goodI) = 0;
+linkedPlot(t2,[dV3 pws(dV3,false,false,2)],'-');
+
+if dPrcntFlag
+    if cumFlag
+        figure(); plot(t2,cumsum(pws(dV3,false,false,1))/(Nsmooth*2),'-'); zoom on;
+    else
+        figure(); plot(t2,cumsum(pws(dV3,false,false,1)),'-'); zoom on;
+    end
+else
+    figure(); plot(t2,cumsum(pws(dV3,false,false,1))/(Nsmooth*2),'-'); zoom on;
+end
+
+%%
+if nIndependentChannels == 1
+    return;
+elseif nIndependentChannels == 12
+    %RF = [4 5 6 10 11 12];
+    %symMatrix = [1 2 3 RF]; %excludes 7,8,9 (all NE combos)
+    %symMatrix = [1 2 3 6 12]; %excludes 7,8,9 (all NE combos)
+    %symMatrix = [1 2 3 4 5 10 11]; %excludes 7,8,9 and 6 and 12 (folded traces)
+    %symMatrix = [1 2 3 6 9 12];
+    symMatrix = [1 2 3 4 5 7 8 10 11]; %no folded x-terms sym
+    %symMatrix = [1 2 3];
+    %symMatrix = 1:12;
+    %symMatrix = 4:12;
+    %symMatrix = [1 2 3 4 7 10];
+    %symMatrix = [1 2 3 5 8 11];
+    %symMatrix = [4 5 7 8 10 11];
+    %symMatrix = [4 7 10];
+    %symMatrix = [5 8 11];
+elseif nIndependentChannels == 27
+    symMatrix = (3:3:27)';
+end
+disp('just the symmetric');
+
+CC = CCInterp;
+dV = dVInterp;
+rmsPrcnt = rmsInterp;
+
+CCI = CC >= minCCThresh;
+CC(~CCI) = NaN;
+dV(~CCI) = NaN;
+
+ccweights = ((CC(:,symMatrix).^mu)./sum((CC(:,symMatrix).^mu),2,"omitnan"));
+goodI = ~any(~isfinite(CC) | ~isfinite(dV),2); % == 0;
+
+dV(~goodI) = NaN; %cumsum(dV,"omitnan");
+if dPrcntFlag
+    dV = cumsum(dV,"omitnan");
+    if cumFlag
+        dV = dV/(Nsmooth*2);
+    else
+        rmsPrcnt = rmsPrcnt*sqrt(Nsmooth+1);
+    end
+else
+    rmsPrcnt = rmsPrcnt*sqrt(Nsmooth+1);
+end
+dVstack = sum(dV(:,symMatrix).*ccweights,2,"omitnan");
+
+figure('units','normalized','outerposition',[0 0.5 1 1]);
+laxes = laxes + 1;
+ax_(laxes) = gca;
+plot(ax_(laxes),t2,dVstack,'linewidth',3); zoom on; grid on;
+hold on;
+h1 = plot(t2,dVstack+1.96*(sum(ccweights.*(rmsPrcnt(:,symMatrix).^mu),2,"omitnan").^(1/mu)),'k--','linewidth',2);
+h2 = plot(t2,dVstack-1.96*(sum(ccweights.*(rmsPrcnt(:,symMatrix).^mu),2,"omitnan").^(1/mu)),'k--','linewidth',2);
+h1.Color(4) = 0.5;
+h2.Color(4) = 0.5;
+linkaxes(ax_,'xy');
+title("sym")
+
+figure();
+plot(t2,1.96*(sum(ccweights.*(rmsPrcnt(:,symMatrix).^mu),2,"omitnan").^(1/mu)),'.'); zoom on; grid on;
+toc;

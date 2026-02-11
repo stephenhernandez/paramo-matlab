@@ -1,0 +1,168 @@
+function [decon,mscohe,xcohe,Sxy,Sxx,Syy] = fd_decon(S,Hbu,...
+    totN,dpssSeq,nfft,lambda,overlapPrcnt,detrendFlag,...
+    GAINCORRECTION,HILBERTFLAG,CANUSEGPU)
+%
+% [decon,phase,xcohe,mscohe,Sxy,Sxx,Syy] = fd_decon(Sf,Hbu,totN,dpssSeq,nfft,...
+% overlapPrcnt,detrendFlag,GAINCORRECTION,HILBERTFLAG,CANUSEGPU)
+%
+
+%%
+if nargin < 7
+    detrendFlag = true;
+end
+if nargin < 8
+    GAINCORRECTION = false;
+end
+if nargin < 9
+    HILBERTFLAG = false;
+end
+if nargin < 10
+    CANUSEGPU = false;
+end
+
+%%
+nTapers = size(dpssSeq,3);
+nIter = nTapers;
+dcut1 = cutWindows(S(1).d,totN,overlapPrcnt,detrendFlag);
+dcut2 = cutWindows(S(2).d,totN,overlapPrcnt,detrendFlag);
+var1_timedomain = var(dcut1,1); %timedomain est.
+var2_timedomain = var(dcut2,1); %timedomain est.
+if CANUSEGPU
+    dpssSeq = gpuArray(dpssSeq);
+    dcut1 = gpuArray(dcut1);
+    dcut2 = gpuArray(dcut2);
+end
+
+D2 = fft(dcut2,nfft,1);
+if HILBERTFLAG
+    D2(1:nfft/2 + 1,:) = -1j*D2(1:nfft/2 + 1,:);
+    D2(1,:) = 0;
+    D2(nfft/2 + 1,:) = 0;
+    D2(nfft/2 + 2:end,:) = 1j*D2(nfft/2+2:end,:);
+end
+%Sxy = fft(dcut1,nfft,1).*conj(D2);
+D1Orig = fft(dcut1,nfft,1);
+D2Orig = D2;
+
+%% apply tapers to data
+dcut1 = repmat(dcut1,1,1,nTapers);
+dcut2 = repmat(dcut2,1,1,nTapers);
+dcut1 = dpssSeq.*dcut1;
+dcut2 = dpssSeq.*dcut2;
+
+%%
+nyquistI = nfft/2 + 1;
+D1 = fft(dcut1,nfft,1);
+D2 = fft(dcut2,nfft,1);
+if HILBERTFLAG
+    D2(1:nyquistI,:,:) = -1j*D2(1:nyquistI,:,:);
+    D2(1,:,:) = 0;
+    D2(nyquistI,:,:) = 0;
+    D2(nyquistI+1:end,:,:) = 1j*D2(nyquistI+1:end,:,:);
+end
+Sxx = D1.*conj(D1);
+Syy = D2.*conj(D2);
+Sest_xx = mean(Sxx(:,:,1:2),3);
+weights = zeros(size(Sxx));
+iter = 0;
+while iter < nIter
+    % since i dont know how to stop the iterative process, i will just choose 4...
+    for k = 1:nTapers
+        lambda_k = lambda(k);
+        sqrt_lambda = sqrt(lambda_k);
+        lambda_k_S = sqrt_lambda.*Sest_xx;
+        weights_ = lambda_k_S./(sqrt_lambda*lambda_k_S + (1-lambda_k)*var1_timedomain);
+        weights(:,:,k) = weights_;
+    end
+    normWeights = 1./sum(weights,3);
+    weights = weights.*normWeights;
+    Sest_xx = sum(weights.*Sxx,3);
+    iter = iter + 1;
+end
+normWeights = 1./sum(weights,3);
+weights = weights.*normWeights;
+Sxx = sum(weights.*Sxx,3);
+
+% Sest_yy = sum(weights.*Syy,3);
+% iter = 0;
+% while iter < 4
+%     % since i dont know how to stop the iterative process, i will just choose 4...
+%     for k = 1:nTapers
+%         lambda_k = lambda(k);
+%         sqrt_lambda = sqrt(lambda_k);
+%         lambda_k_S = sqrt_lambda.*Sest_yy;
+%         weights_ = lambda_k_S./(sqrt_lambda*lambda_k_S + (1-lambda_k)*var2_timedomain);
+%         weights(:,:,k) = weights_;
+%     end
+%     normWeights = 1./sum(weights,3);
+%     weights = weights.*normWeights;
+%     Sest_yy = sum(weights.*Syy,3);
+%     iter = iter + 1;
+% end
+% normWeights = 1./sum(weights,3);
+% weights = weights.*normWeights;
+Syy = Sxx; %sum(weights.*Syy,3);
+
+ampsxx = real(median(sqrt(Sxx),1,"omitnan"))';
+ampsyy = real(median(sqrt(Syy),1,"omitnan"))';
+badI = ~isfinite(ampsxx) | ampsxx == 0 | ~isfinite(ampsyy) | ampsyy == 0;
+
+D1Orig(:,badI) = [];
+D2Orig(:,badI) = [];
+D1(:,badI,:) = [];
+D2(:,badI,:) = [];
+nTimes = size(D1,2);
+if nTimes < 1
+    [decon,mscohe,xcohe,Sxy,Sxx,Syy] = deal([]);
+    return;
+end
+
+if GAINCORRECTION
+    ampsxx(badI) = [];
+    D1 = D1./median(ampsxx); %this removes original gain information
+    Sxx = sum(D1.*conj(D1),3);
+    Syy = sum(D2.*conj(D2),3);
+else
+    Sxx(:,badI) = [];
+    Syy(:,badI) = [];
+    %Sxy(:,badI) = [];
+end
+
+%Sxy = sum(D1.*conj(D2),3)/nfft; % frequency domain
+Sxy = D1Orig.*conj(D2Orig)/nfft; % cross-spectrum in frequency domain
+%Sxy = D1Orig.*conj(D2Orig)/Fs; % frequency domain
+%Sxy = D1.*conj(D2)/nfft;
+
+%%
+decon = Hbu.*(Sxy./Syy).*conj(Hbu);
+xcohe = sqrt(Syy./Sxx).*decon;
+mscohe = real(xcohe.*conj(xcohe)); % have to be explicit with real because gpu screws it up
+decon = decon(1:nfft/2,:);
+mscohe = mscohe(1:nfft/2,:);
+xcohe = xcohe(1:nfft/2,:);
+Sxx = Sxx(1:nfft/2,:);
+Syy = Syy(1:nfft/2,:);
+Sxy = Sxy(1:nfft/2,:);
+
+%%
+[Syy,sI] = sort(Syy,2);
+linear_idx = sub2ind([nfft/2 nTimes],repmat((1:nfft/2)',1,nTimes),sI);
+decon = decon(linear_idx);
+mscohe = mscohe(linear_idx);
+xcohe = xcohe(linear_idx);
+Sxx = Sxx(linear_idx);
+Sxy = Sxy(linear_idx);
+
+%%
+minN = 10;
+maxN = max([floor(0.6*nTimes),1]);
+if minN > maxN
+    minN = 1;
+end
+decon = decon(:,minN:maxN);
+mscohe = mscohe(:,minN:maxN);
+xcohe = xcohe(:,minN:maxN);
+Sxx = Sxx(:,minN:maxN);
+Syy = Syy(:,minN:maxN);
+Sxy = Sxy(:,minN:maxN);
+fprintf("Nused: %d, nfft: %d, nTimes: %d\n",maxN-minN+1,nfft,nTimes);
