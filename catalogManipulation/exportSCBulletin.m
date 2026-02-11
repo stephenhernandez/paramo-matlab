@@ -1,0 +1,19 @@
+function exportSCBulletin(listName,saveName)
+strListName = inputname(1); %first argument
+%disp(strListName);
+
+if exist(strListName,'file')
+    textFlag = true;
+else
+    textFlag = false;
+end
+
+[E,t,origlat,origlon,origdepth,origmag,...
+    origtimerr,origlonerr,origlaterr,origdeptherr,origmagerr,...
+    nPphases,nSphases,origrms,origgap,...
+    nMLv,nML,nMjma,nMsBB,nMwp,nmB,nmb,ids] = extractSC3CatalogFromList(listName,textFlag);
+
+save(saveName,'E','t','origlat','origlon','origdepth','origmag',...
+    'origtimerr','origlonerr','origlaterr','origdeptherr','origmagerr',...
+    'nPphases','nSphases','origrms','origgap',...
+    'nMLv','nML','nMjma','nMsBB','nMwp','nmB','nmb','ids','-v7.3');
