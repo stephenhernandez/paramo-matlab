@@ -1,0 +1,63 @@
+function [S,n] = loadSingleSNCL(dayList,stnm,chan,net,locID,derivedRate,verboseFlag,pathToWaveformServerOrDirectory)
+%
+% loadSingleSNCL loads _single_ station-network-channel-location combo from
+% one or multiple days
+%
+% [S,n] = loadSingleSNCL(dayList,stnm,chan,net,locID,derivedRate,verboseFlag,pathToWaveformServerOrDirectory)
+% S: waveform struct
+% n: number of succesful data imports
+%
+% The returned structure S is not merged
+%
+
+% Written by Stephen Hernandez
+% Instituto Geofisico, Quito, Ecuador
+% Tuesday, Jul 23, 2019
+% Updated: Wednesday, Nov 06, 2019
+
+%%
+n = 0;
+lDays = length(dayList);
+
+%%
+QualityCode = "D";
+S = populateWaveforms(lDays);
+for i = 1:lDays
+    currentDay = dayList(i);
+    [yyyy,~] = datevec(currentDay);
+    yyyyStr = num2str(yyyy);
+    chanDir  = strcat(chan,".",QualityCode);
+    rawDataDir = fullfile(pathToWaveformServerOrDirectory,yyyyStr,net,stnm,chanDir);
+    doy = day(currentDay,'doy');
+    dayStr = sprintf("%03d",doy);
+    miniSeedFileName = strcat(net,".",stnm,".",locID,".",chan,".",QualityCode,".",yyyyStr,".",dayStr);
+
+    %% first attempt!
+    miniSeedSearch1 = fullfile(rawDataDir,miniSeedFileName);
+    [S_,successFlag,ENCODING,gapFlag,multiplexedFlag] = readMiniSeed(miniSeedSearch1,derivedRate,verboseFlag);
+
+    %%
+    if ~successFlag
+        if verboseFlag
+            fprintf(1,'Could not import: %s.%s.%s.%s  (%s, %d)\n',net,stnm,locID,chan,currentDay,doy);
+        end
+        continue
+    end
+
+    if multiplexedFlag
+        fprintf(2,'This file is multiplexed!!!!!!: %s.%s.%s.%s  (%s, %d)\n',net,stnm,locID,chan,currentDay,doy);
+        continue
+    end
+
+    %%
+    n = n + 1;
+    S(n) = S_(1);
+    if verboseFlag
+        fprintf('Found: %s, (%s)\n',miniSeedFileName,currentDay);
+        if gapFlag
+            fprintf(1,'%s, %s, gaps present\n',miniSeedFileName,num2str(ENCODING));
+        else
+            fprintf(1,'%s, %s, no gaps\n',miniSeedFileName,num2str(ENCODING));
+        end
+    end
+end
